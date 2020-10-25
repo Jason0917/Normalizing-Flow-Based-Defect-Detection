@@ -6,48 +6,6 @@ from torchvision import datasets, transforms
 import config as c
 from multi_transform_loader import ImageFolderMultiTransform
 
-import random
-import cv2
-import numpy as np
-from datetime import datetime
-
-def TransformShow(name="img", wait=100):
-    def transform_show(img):
-        cv2.imshow(name, np.array(img))
-        cv2.waitKey(wait)
-        return img
-
-    return transform_show
-
-def randomCrop():
-    def random_crop(img):
-        x,y,w,h = random_shrink2(img.size)
-        rs = transforms.functional.crop(img,y,x,h,w)
-        path = 'cropped/'
-        now = datetime.now()
-        dt_string = now.strftime("%d%m%Y%H%M%S")
-        cv2.imwrite(path + 'transform_' + dt_string + '.jpg', np.array(rs))
-        return rs
-
-    return random_crop
-
-def random_shrink2(img_size):
-    width, height = img_size
-    center_x = int(width / 2)
-    center_y = int(height / 2)
-    shrink_scaleT = 0.2
-    shrink_scale = 0.05
-    top_reduction = shrink_scaleT * height
-    bot_reduction = shrink_scale * height
-    lr_reduction = shrink_scale * width
-    new_height = int(height - top_reduction - bot_reduction)
-    new_width = int(width - 2*lr_reduction)
-    new_ul_x = int(center_x - new_width / 2)
-    new_ul_y = int(bot_reduction)
-    print(
-        f"shrinking ({0, 0, width, height}) to ({new_ul_x, new_ul_y, new_width, new_height})"
-    )
-    return new_ul_x, new_ul_y, new_width, new_height
 
 def t2np(tensor):
     '''pytorch tensor -> numpy array'''
@@ -116,13 +74,13 @@ def load_datasets(dataset_path, class_name, test=False):
 
     augmentative_transforms = []
     if c.transf_rotations:
-        augmentative_transforms += [transforms.RandomRotation(5)]
+        augmentative_transforms += [transforms.RandomRotation(180)]
     if c.transf_brightness > 0.0 or c.transf_contrast > 0.0 or c.transf_saturation > 0.0:
         augmentative_transforms += [transforms.ColorJitter(brightness=c.transf_brightness, contrast=c.transf_contrast,
                                                            saturation=c.transf_saturation)]
 
-    tfs = [randomCrop(), transforms.Resize(c.img_size)] \
-          + augmentative_transforms + [ TransformShow("", 100), transforms.ToTensor(), transforms.Normalize(c.norm_mean, c.norm_std)]
+    tfs = [transforms.Resize(c.img_size)] + augmentative_transforms + [transforms.ToTensor(),
+                                                                       transforms.Normalize(c.norm_mean, c.norm_std)]
 
     transform_train = transforms.Compose(tfs)
 
@@ -169,8 +127,10 @@ def preprocess_batch(data):
     return inputs, labels
 
 def differences_as_input(inputs):
-    # instead of using the input images, we calculate the differences between each set of 2 images
+    '''
+    instead of using the input images, we calculate the differences between each set of 2 images
     # then we feed the differences as our input to the model
+    '''
     num_batch = inputs.shape[0]
     for i in range(num_batch):
         diff_list = []
@@ -189,4 +149,4 @@ def differences_as_input(inputs):
             diff_inputs = diff_list
         else:
             diff_inputs = torch.cat((diff_inputs, diff_list), 0)
-    return diff_inputs
+    return torch.cat((diff_inputs, diff_inputs), 1)
