@@ -1,14 +1,22 @@
-import numpy as np
+import pytorch_ssim
 import torch
+from torch.autograd import Variable
+from torch import optim
+import cv2
+import numpy as np
 from sklearn.metrics import roc_auc_score
 from sklearn.metrics import roc_curve
 from tqdm import tqdm
 
 import config as c
 from localization import export_gradient_maps
-from model import DifferNet, save_model, save_parameters, save_weights
+from model import MaskDifferNet, DifferNet, save_model, save_weights, save_parameters, save_roc_plot
 from utils import *
 
+alpha = 0.8
+beta = 0.2
+
+use_VAE = True # set to False if you want to use original DifferNet
 
 class Score_Observer:
     '''Keeps an eye on the current and highest score so far'''
@@ -33,11 +41,21 @@ class Score_Observer:
 
 
 def train(train_loader, validate_loader):
-    model = DifferNet()
-    optimizer = torch.optim.Adam(model.nf.parameters(), lr=c.lr_init, betas=(0.8, 0.8), eps=1e-04, weight_decay=1e-5)
+    if use_VAE:
+        model = MaskDifferNet()
+        optimizer = torch.optim.Adam([
+            {'params': model.nf.parameters()},
+            {'params': model.vae.parameters()}
+        ], lr=c.lr_init, betas=(0.8, 0.8), eps=1e-04, weight_decay=1e-5)
+    else:
+        model = DifferNet()
+        optimizer = torch.optim.Adam([
+            {'params': model.nf.parameters()}
+        ], lr=c.lr_init, betas=(0.8, 0.8), eps=1e-04, weight_decay=1e-5)
+
     model.to(c.device)
 
-    save_name_pre = '{}_{}_{}_{}_{}_{}'.format(c.modelname, c.rotation_degree,
+    save_name_pre = '{}_{}_{:.2f}_{:.2f}_{:.2f}_{:.2f}'.format(c.modelname, c.rotation_degree,
                                                c.crop_top, c.crop_left, c.crop_bottom, c.crop_right)
 
     score_obs = Score_Observer('AUROC')
@@ -56,11 +74,39 @@ def train(train_loader, validate_loader):
                 # TODO inspect
                 # inputs += torch.randn(*inputs.shape).cuda() * c.add_img_noise
 
-                z = model(inputs)
-                loss = get_loss(z, model.nf.jacobian(run_forward=False))
-                train_loss.append(t2np(loss))
-                loss.backward()
-                optimizer.step()
+                if use_VAE:
+                    z, masks, masked_imgs = model(inputs)
+                    counter_masks = torch.zeros(masks.shape)
+                    # print(masks)
+
+                    inputs = Variable(inputs, requires_grad=False)
+                    masks = Variable(masks, requires_grad=True)
+                    counter_masks = Variable(counter_masks, requires_grad=False)
+                    masked_imgs = Variable(masked_imgs, requires_grad=True)
+
+                    # Reference: https://github.com/Po-Hsun-Su/pytorch-ssim
+                    ssim = pytorch_ssim.SSIM()
+
+                    counter_masks = counter_masks.to("cuda")
+                    similarity_loss = -ssim(inputs, masked_imgs)
+                    size_loss = -ssim(masks, counter_masks)
+
+                    ssim_loss = alpha*similarity_loss + beta*size_loss
+                    ssim_loss.backward()
+                    # print("ssim_loss: " + str(ssim_loss))
+
+                    loss = get_loss(z, model.nf.jacobian(run_forward=False))
+                    train_loss.append(t2np(loss))
+                    loss.backward()
+                    optimizer.step()
+
+                else:
+                    z = model(inputs)
+
+                    loss = get_loss(z, model.nf.jacobian(run_forward=False))
+                    train_loss.append(t2np(loss))
+                    loss.backward()
+                    optimizer.step()
 
             mean_train_loss = np.mean(train_loss)
             if c.verbose:
@@ -77,7 +123,10 @@ def train(train_loader, validate_loader):
             with torch.no_grad():
                 for i, data in enumerate(tqdm(validate_loader, disable=c.hide_tqdm_bar)):
                     inputs, labels = preprocess_batch(data)
-                    z = model(inputs)
+                    if use_VAE:
+                        z, masks, masked_imgs = model(inputs)
+                    else:
+                        z = model(inputs)
                     loss = get_loss(z, model.nf.jacobian(run_forward=False))
                     test_z.append(z)
                     test_loss.append(t2np(loss))
@@ -101,7 +150,8 @@ def train(train_loader, validate_loader):
             model_parameters['thresholds'] = thresholds.tolist()
             model_parameters['AUROC'] = AUROC
 
-            save_parameters(model_parameters, save_name_pre + '_epoch-' + str(epoch))
+            save_parameters(model_parameters, save_name_pre + "_{:.4f}".format(AUROC))
+            save_roc_plot(fpr, tpr, save_name_pre + "_{:.4f}".format(AUROC))
 
             if c.verbose:
                 print('Epoch: {:d} \t validate_loss: {:.4f}'.format(epoch, test_loss))
@@ -114,8 +164,8 @@ def train(train_loader, validate_loader):
                 print('tpr:           ', tpr)
                 print('thresholds:    ', thresholds)
 
-#    if c.grad_map_viz and not (validate_loader is None):
-#        export_gradient_maps(model, validate_loader, optimizer, -1)
+    if c.grad_map_viz and not (validate_loader is None):
+        export_gradient_maps(model, validate_loader, optimizer, 1)
 
     if c.save_model:
         model.to('cpu')
@@ -126,7 +176,7 @@ def train(train_loader, validate_loader):
 
 def test(model, model_parameters, test_loader):
     print("Running test")
-    optimizer = torch.optim.Adam(model.nf.parameters(), lr=c.lr_init, betas=(0.8, 0.8), eps=1e-04,
+    optimizer = torch.optim.Adam([model.nf.parameters(), model.vae.parameters()], lr=c.lr_init, betas=(0.8, 0.8), eps=1e-04,
                                  weight_decay=1e-5)
     # score_obs = Score_Observer('AUROC')
     # evaluate
@@ -145,7 +195,10 @@ def test(model, model_parameters, test_loader):
         # inputs = Variable(inputs, requires_grad=True)
         print(f"i={i}: labels={labels}, size of inputs={inputs.size()}")
         # print(f"inputs={inputs}")
-        z = model(inputs)
+        if use_VAE:
+            z, mask, masked_img = model(inputs)
+        else:
+            z = model(inputs)
         # print(f"z={z}")
         loss = get_loss(z, model.nf.jacobian(run_forward=False))
         test_z.append(z)

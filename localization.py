@@ -50,6 +50,7 @@ def export_gradient_maps(model, testloader, optimizer, n_batches=1):
         loss.backward()
 
         grad = inputs.grad.view(-1, c.n_transforms_test, *inputs.shape[-3:])
+
         grad = grad[labels > 0]
         if grad.shape[0] == 0:
             continue
