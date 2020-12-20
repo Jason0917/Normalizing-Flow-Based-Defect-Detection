@@ -12,11 +12,12 @@ import config as c
 from localization import export_gradient_maps
 from model import MaskDifferNet, DifferNet, save_model, save_weights, save_parameters, save_roc_plot
 from utils import *
+from config import use_VAE
 
 alpha = 0.8
 beta = 0.2
 
-use_VAE = True # set to False if you want to use original DifferNet
+
 
 class Score_Observer:
     '''Keeps an eye on the current and highest score so far'''

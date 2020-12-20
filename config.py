@@ -12,12 +12,15 @@ torch.cuda.set_device(0)
 
 # data settings
 dataset_path = "dataset"
-class_name = "black-without-logo"
-modelname = "black-without-logo"
+class_name = "black-logo-yolo"
+modelname = "black-logo-yolo"
 
 img_size = (448, 448)
 img_dims = [3] + list(img_size)
 add_img_noise = 0.01
+
+# set to False if you want to use original DifferNet
+use_VAE = True
 
 # transformation settings
 transf_gray = False
