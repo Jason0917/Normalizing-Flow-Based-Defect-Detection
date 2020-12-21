@@ -11,15 +11,15 @@ import torch
 torch.cuda.set_device(0)
 
 # data settings
-dataset_path = "dataset"
-class_name = "black-logo-yolo"
-modelname = "black-logo-yolo"
+dataset_path = "dummy_dataset"
+class_name = "dummy_class"
+modelname = "dummy_class"
 
 img_size = (448, 448)
 img_dims = [3] + list(img_size)
 add_img_noise = 0.01
 
-# set to False if you want to use original DifferNet
+# set to Ture if you want to use MaskedDifferNet
 use_VAE = True
 
 # transformation settings
@@ -54,7 +54,7 @@ batch_size_test = batch_size * n_transforms // n_transforms_test
 
 # total epochs = meta_epochs * sub_epochs
 # evaluation after <sub_epochs> epochs
-meta_epochs = 3
+meta_epochs = 1
 sub_epochs = 8
 
 # output settings
