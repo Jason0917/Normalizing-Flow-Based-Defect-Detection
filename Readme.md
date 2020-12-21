@@ -46,9 +46,9 @@ $ python main.py
 
 If you want to run the original DifferNet, change the use_VAE to True in config.py.
 
-'''
+```
 use_VAE = True
-'''
+```
 
 ## Data
 How to use Data extraction tool to extract data from video clips:
