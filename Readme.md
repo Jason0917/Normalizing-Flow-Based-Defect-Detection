@@ -1,3 +1,7 @@
+# Notes
+
+Most of the codes in this repository are from open source. Our original codes are labeled in comments.
+
 # DifferNet
 
 This is the official repository to the WACV 2021 paper "[Same Same But DifferNet: Semi-Supervised Defect Detection with Normalizing Flows](
@@ -44,10 +48,10 @@ Please report us if you have issues when using the code.
 $ python main.py
 ```
 
-If you want to run the original DifferNet, change the use_VAE to True in config.py.
+If you want to run the original DifferNet, change the use_VAE to False in config.py.
 
 ```
-use_VAE = True
+use_VAE = False
 ```
 
 ## Data
