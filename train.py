@@ -57,7 +57,8 @@ def train(train_loader, validate_loader):
     model.to(c.device)
 
     save_name_pre = '{}_{}_{:.2f}_{:.2f}_{:.2f}_{:.2f}'.format(c.modelname, c.rotation_degree,
-                                               c.crop_top, c.crop_left, c.crop_bottom, c.crop_right)
+                                                               c.shrink_scale_top, c.shrink_scale_left,
+                                                               c.shrink_scale_bot, c.shrink_scale_right)
 
     score_obs = Score_Observer('AUROC')
 

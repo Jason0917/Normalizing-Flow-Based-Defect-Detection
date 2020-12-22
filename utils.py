@@ -1,11 +1,52 @@
 import os
 import torch
-from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 
 import config as c
 from multi_transform_loader import ImageFolderMultiTransform
 
+import cv2
+import numpy as np
+from datetime import datetime
+
+def TransformShow(name="img", wait=100):
+    def transform_show(img):
+        # path = "transform/"
+        # now = datetime.now()
+        # dt_string = now.strftime("%d%m%Y%H%M%S")
+        # cv2.imwrite(path + 'all_transform_' + dt_string + '.jpg', np.array(img))
+        cv2.imshow(name, np.array(img))
+        cv2.waitKey(wait)
+        return img
+
+    return transform_show
+
+def cropImage():
+    def crop_image(img):
+        x,y,w,h = shrinkEdges(img.size)
+        rs = transforms.functional.crop(img,y,x,h,w)
+        # path = "transform/"
+        # now = datetime.now()
+        # dt_string = now.strftime("%d%m%Y%H%M%S")
+        # cv2.imwrite(path + 'transform_' + dt_string + '.jpg', np.array(rs))
+        return rs
+
+    return crop_image
+
+def shrinkEdges(img_size):
+    width, height = img_size
+    top_reduction = c.shrink_scale_top * width
+    bot_reduction = c.shrink_scale_bot * width
+    left_reduction = c.shrink_scale_left * height
+    right_reduction = c.shrink_scale_right * height
+    new_height = int(height - left_reduction - right_reduction)
+    new_width = int(width - top_reduction - bot_reduction)
+    new_ul_x = int(top_reduction)
+    new_ul_y = int(right_reduction)
+    print(
+        f"shrinking {0, 0, width, height} to {new_ul_x, new_ul_y, new_width, new_height} by ({new_width/width:.2f}, {new_height/height:.2f})"
+    )
+    return new_ul_x, new_ul_y, new_width, new_height
 
 def t2np(tensor):
     '''pytorch tensor -> numpy array'''
@@ -20,32 +61,24 @@ def get_loss(z, jac):
 def load_datasets(dataset_path, class_name, test=False):
     '''
     Expected folder/file format to find anomalies of class <class_name> from dataset location <dataset_path>:
-
     train data:
-
             dataset_path/class_name/train/good/any_filename.png
             dataset_path/class_name/train/good/another_filename.tif
             dataset_path/class_name/train/good/xyz.png
             [...]
-
     test data:
-
         'normal data' = non-anomalies
-
             dataset_path/class_name/test/good/name_the_file_as_you_like_as_long_as_there_is_an_image_extension.webp
             dataset_path/class_name/test/good/did_you_know_the_image_extension_webp?.png
             dataset_path/class_name/test/good/did_you_know_that_filenames_may_contain_question_marks????.png
             dataset_path/class_name/test/good/dont_know_how_it_is_with_windows.png
             dataset_path/class_name/test/good/just_dont_use_windows_for_this.png
             [...]
-
         anomalies - assume there are anomaly classes 'crack' and 'curved'
-
             dataset_path/class_name/test/crack/dat_crack_damn.png
             dataset_path/class_name/test/crack/let_it_crack.png
             dataset_path/class_name/test/crack/writing_docs_is_fun.png
             [...]
-
             dataset_path/class_name/test/curved/wont_make_a_difference_if_you_put_all_anomalies_in_one_class.png
             dataset_path/class_name/test/curved/but_this_code_is_practicable_for_the_mvtec_dataset.png
             [...]
@@ -74,13 +107,13 @@ def load_datasets(dataset_path, class_name, test=False):
 
     augmentative_transforms = []
     if c.transf_rotations:
-        augmentative_transforms += [transforms.RandomRotation(c.rotation_degree)]
+        augmentative_transforms += [transforms.RandomRotation(180)]
     if c.transf_brightness > 0.0 or c.transf_contrast > 0.0 or c.transf_saturation > 0.0:
         augmentative_transforms += [transforms.ColorJitter(brightness=c.transf_brightness, contrast=c.transf_contrast,
                                                            saturation=c.transf_saturation)]
 
-    tfs = [transforms.Resize(c.img_size)] + augmentative_transforms + [transforms.ToTensor(),
-                                                                       transforms.Normalize(c.norm_mean, c.norm_std)]
+    tfs = [cropImage(), transforms.Resize(c.img_size)] \
+          + augmentative_transforms + [ TransformShow("Transformed Image", 100), transforms.ToTensor(), transforms.Normalize(c.norm_mean, c.norm_std)]
 
     transform_train = transforms.Compose(tfs)
 
@@ -117,9 +150,9 @@ def make_dataloaders(trainset, validateset, testset, test=False):
 def preprocess_batch(data):
     '''move data to device and reshape image'''
     inputs, labels = data
-    #print(f"begin: size of inputs={inputs.size()}")
+    print(f"begin: size of inputs={inputs.size()}")
     inputs, labels = inputs.to(c.device), labels.to(c.device)
-    #print(f"to: size of inputs={inputs.size()}")
+    print(f"to: size of inputs={inputs.size()}")
     inputs = inputs.view(-1, *inputs.shape[-3:])
-    #print(f"view: size of inputs={inputs.size()}")
+    print(f"view: size of inputs={inputs.size()}")
     return inputs, labels
